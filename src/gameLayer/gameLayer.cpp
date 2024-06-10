@@ -22,7 +22,8 @@ GameplayData data;
 
 gl2d::Renderer2D renderer;
 
-gl2d::Texture spaceShipTexture;
+gl2d::Texture spaceShipTexture; // 플레이어
+gl2d::Texture backgroundTexture; // 배경화면
 
 bool initGame()
 {
@@ -31,6 +32,7 @@ bool initGame()
 	renderer.create();
 
 	spaceShipTexture.loadFromFile(RESOURCES_PATH "spaceShip/ships/green.png", true);
+	backgroundTexture.loadFromFile(RESOURCES_PATH "background1.png", true);
 
 
 	return true;
@@ -69,7 +71,12 @@ bool gameLogic(float deltaTime)
 
 #pragma endregion
 
+#pragma region reder background
 
+	// 플레이어를 따라가는 카메라
+	renderer.currentCamera.follow(data.playerPos, deltaTime * 150, 10, 200, w, h);
+	renderer.renderRectangle({ 0, 0, 10000, 10000}, backgroundTexture);
+#pragma endregion
 	renderer.renderRectangle({ data.playerPos, 200, 200 }, spaceShipTexture);
 
 
