@@ -35,7 +35,8 @@ bool initGame()
 	gl2d::init();
 	renderer.create();
 
-	spaceShipTexture.loadFromFile(RESOURCES_PATH "spaceShip/ships/green.png", true);
+	spaceShipTexture.loadFromFileWithPixelPadding(RESOURCES_PATH "spaceShip/ships/green.png", 128, true);
+
 	backgroundTexture[0].loadFromFile(RESOURCES_PATH "background1.png", true);
 	backgroundTexture[1].loadFromFile(RESOURCES_PATH "background2.png", true);
 	backgroundTexture[2].loadFromFile(RESOURCES_PATH "background3.png", true);
@@ -111,9 +112,15 @@ bool gameLogic(float deltaTime)
 
 #pragma endregion
 
+#pragma region render ship
+
+	constexpr float shipSize = 250.f;
+
 	// 플레이어를 따라다니는 카메라
 	renderer.currentCamera.follow(data.playerPos, deltaTime * 450, 10, 50, w, h);
-	renderer.renderRectangle({ data.playerPos, 250, 250 }, spaceShipTexture,
+
+	renderer.renderRectangle({ data.playerPos - glm::vec2(shipSize / 2, shipSize / 2)
+		, shipSize, shipSize }, spaceShipTexture,
 		Colors_White, {}, glm::degrees(spaceShipAngle) + 90.f);
 
 
