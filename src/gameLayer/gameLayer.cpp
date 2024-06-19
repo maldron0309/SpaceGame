@@ -4,10 +4,10 @@
 #include <glm/glm.hpp>
 #include <glm/gtx/transform.hpp>
 #include "platformInput.h"
-#include "imgui.h"
+// #include "imgui.h"
 #include <iostream>
 #include <sstream>
-#include "imfilebrowser.h"
+// #include "imfilebrowser.h"
 #include <gl2d/gl2d.h>
 #include <platformTools.h>
 #include <tiledRenderer.h>
@@ -15,14 +15,20 @@
 #include <vector>
 #include <enemy.h>
 #include <cstdio>
+#include <glui/glui.h>
+#include <raudio.h>
 
 struct GameplayData
 {
-	glm::vec2 playerPos = {100,100}; // 플레이어 위치
+	glm::vec2 playerPos = { 100, 100 }; // Player Current Postion
 
 	std::vector<Bullet> bullets;
 
 	std::vector<Enemy> enemies;
+
+	float health = 1.f;
+
+	float spawnEnemyTimerSecconds = 3;
 };
 
 
@@ -41,10 +47,21 @@ gl2d::TextureAtlasPadding bulletsAtlas;
 gl2d::Texture backgroundTexture[BACKGROUNDS];
 TiledRenderer tiledRenderer[BACKGROUNDS];
 
+
+gl2d::Texture healthBar;
+gl2d::Texture health;
+
+Sound shootSound;
+
+
+bool intersectBullet(glm::vec2 bulletPos, glm::vec2 shipPos, float shipSize)
+{
+	return glm::distance(bulletPos, shipPos) <= shipSize;
+}
+
 void restartGame()
 {
 	data = {};
-
 	renderer.currentCamera.follow(data.playerPos, 550, 0, 0, renderer.windowW, renderer.windowH);
 }
 
@@ -64,7 +81,11 @@ bool initGame()
 	(RESOURCES_PATH "spaceShip/stitchedFiles/projectiles.png", 500, true);
 	bulletsAtlas = gl2d::TextureAtlasPadding(3, 2, bulletsTexture.GetSize().x, bulletsTexture.GetSize().y);
 
+	healthBar.loadFromFile(RESOURCES_PATH "healthBar.png", true);
+	health.loadFromFile(RESOURCES_PATH "health.png", true);
 
+	shootSound = LoadSound(RESOURCES_PATH "shoot.flac");
+	SetSoundVolume(shootSound, 0.5);
 
 	backgroundTexture[0].loadFromFile(RESOURCES_PATH "background1.png", true);
 	backgroundTexture[1].loadFromFile(RESOURCES_PATH "background2.png", true);
@@ -86,8 +107,29 @@ bool initGame()
 	return true;
 }
 
-
 constexpr float shipSize = 250.f;
+
+void spanwEnemy() 
+{
+	glm::uvec2 shipTypes[] = {{0,0}, {0,1}, {2,0}, {3, 1}};
+
+	Enemy e;
+	e.position = data.playerPos;
+
+	glm::vec2 offset(2000, 0);
+	offset = glm::vec2(  glm::vec4(offset,0,1) * glm::rotate(glm::mat4(1.f), glm::radians((float)(rand()%360)), glm::vec3(0,0, 1))  );
+
+	e.position += offset;
+
+	e.speed = 800 + rand() % 1000;
+	e.turnSpeed = 2.2f + (rand() & 1000) / 500.f;
+	e.type = shipTypes[rand() % 4];
+	e.fireRange = 1.5 + (rand() % 1000) / 2000.f;
+	e.fireTimeReset = 0.1 + (rand() % 1000) / 500;
+	e.bulletSpeed = rand() % 3000 + 1000;
+
+	data.enemies.push_back(e);
+}
 
 bool gameLogic(float deltaTime)
 {
@@ -109,24 +151,22 @@ bool gameLogic(float deltaTime)
 
 	glm::vec2 move = {};
 
-	if (platform::isButtonHeld(platform::Button::W)) move.y = -1; // up
-	if (platform::isButtonHeld(platform::Button::S)) move.y = 1; // down
-	if (platform::isButtonHeld(platform::Button::A)) move.x = -1; // left
-	if (platform::isButtonHeld(platform::Button::D)) move.x = 1; // right
+	if (platform::isButtonHeld(platform::Button::W)) move.y = -1;
+	if (platform::isButtonHeld(platform::Button::S)) move.y = 1;
+	if (platform::isButtonHeld(platform::Button::A)) move.x = -1;
+	if (platform::isButtonHeld(platform::Button::D)) move.x = 1;
 
-	if (move.x != 0 || move.y != 0) // 벡터 정규화
+	if (move.x != 0 || move.y != 0)
 	{
 		move = glm::normalize(move);
-		move *= deltaTime * 1000; //200 pixels per seccond
+		move *= deltaTime * 2000;
 		data.playerPos += move;
 	}
 
 #pragma endregion
 
-
 #pragma region follow
 
-	// 플레이어를 따라가는 카메라
 	renderer.currentCamera.follow(data.playerPos, deltaTime * 550, 1, 150, w, h);
 
 #pragma endregion
@@ -137,9 +177,9 @@ bool gameLogic(float deltaTime)
 
 	for (int i = 0; i < BACKGROUNDS; i++)
 	{
-		//	tiledRenderer[i].render(renderer);
+		tiledRenderer[i].render(renderer);
 	}
-	tiledRenderer[0].render(renderer);
+	//tiledRenderer[0].render(renderer);
 #pragma endregion
 
 
@@ -150,20 +190,14 @@ bool gameLogic(float deltaTime)
 
 	glm::vec2 mouseDir = mousePos - screenCenter;
 
-	if (glm::length(mouseDir) == 0.f)
-	{
-		mouseDir = {1,0};
-	}
-	else
-	{
-		mouseDir = normalize(mouseDir);
-	}
+	if (glm::length(mouseDir) == 0.f) mouseDir = {1,0};
+	else mouseDir = normalize(mouseDir);
 
-	float spaceShipAngle = atan2(mouseDir.y, -mouseDir.x);
+	float angle = atan2(mouseDir.y, -mouseDir.x);
 
 #pragma endregion
 
-#pragma region handle bullets
+#pragma region handle bulets
 
 
 	if (platform::isLMousePressed())
@@ -174,6 +208,8 @@ bool gameLogic(float deltaTime)
 		b.fireDir = mouseDir;
 
 		data.bullets.push_back(b);
+
+		PlaySound(shootSound);
 	}
 
 
@@ -187,19 +223,95 @@ bool gameLogic(float deltaTime)
 			continue;
 		}
 
+		if (!data.bullets[i].isEnemy)
+		{
+			bool breakBothLoops = false;
+			for (int e = 0; e < data.enemies.size(); e++)
+			{
+
+				if (intersectBullet(data.bullets[i].position, data.enemies[e].position,
+					enemyShipSize))
+				{
+					data.enemies[e].life -= 0.1;
+
+					if (data.enemies[e].life <= 0)
+					{
+						//kill enemy
+						data.enemies.erase(data.enemies.begin() + e);
+					}
+
+					data.bullets.erase(data.bullets.begin() + i);
+					i--;
+					breakBothLoops = true;
+					continue;
+				}
+
+			}
+
+			if (breakBothLoops)
+			{
+				continue;
+			}
+		}
+		else
+		{
+			if (intersectBullet(data.bullets[i].position, data.playerPos,
+				shipSize))
+			{
+				data.health -= 0.1;
+
+				data.bullets.erase(data.bullets.begin() + i);
+				i--;
+				continue;
+			}
+
+		}
+
 		data.bullets[i].update(deltaTime);
 
+	}
+
+	if (data.health <= 0)
+	{
+		//kill player
+		restartGame();
+	}
+	else
+	{
+		data.health += deltaTime * 0.01;
+		data.health = glm::clamp(data.health, 0.f, 1.f);
 	}
 
 #pragma endregion
 
 #pragma region handle enemies
 
+	if (data.enemies.size() < 15) 
+	{
+		data.spawnEnemyTimerSecconds -= deltaTime;
+
+		if (data.spawnEnemyTimerSecconds < 0)
+		{
+			data.spawnEnemyTimerSecconds = rand() % 6 + 1;
+
+			spanwEnemy();
+			if (rand() % 3 == 0)
+			{
+				spanwEnemy();
+				spanwEnemy();
+			}
+
+		}
+	
+	}
+
+
 	for (int i = 0; i < data.enemies.size(); i++)
 	{
+
 		if (glm::distance(data.playerPos, data.enemies[i].position) > 4000.f)
 		{
-			// 적 디스폰
+			//dispawn enemy
 			data.enemies.erase(data.enemies.begin() + i);
 			i--;
 			continue;
@@ -210,7 +322,11 @@ bool gameLogic(float deltaTime)
 			Bullet b;
 			b.position = data.enemies[i].position;
 			b.fireDir = data.enemies[i].viewDir;
+			b.isEnemy = true;
+
 			data.bullets.push_back(b);
+
+			if (!IsSoundPlaying(shootSound)) PlaySound(shootSound);
 		}
 	}
 
@@ -227,8 +343,7 @@ bool gameLogic(float deltaTime)
 
 #pragma region render ship
 
-	renderSpaceShip(renderer, data.playerPos, shipSize,
-		spaceShipsTexture, spaceShipsAtlas.get(3, 0), mouseDir);
+	renderSpaceShip(renderer, data.playerPos, shipSize, spaceShipsTexture, spaceShipsAtlas.get(3, 0), mouseDir);
 
 #pragma endregion
 
@@ -242,37 +357,53 @@ bool gameLogic(float deltaTime)
 #pragma endregion
 
 
+#pragma region ui
+
+	renderer.pushCamera();
+	{
+
+		glui::Frame f({0,0, w, h});
+
+		glui::Box healthBox = glui::Box().xLeftPerc(0.65).yTopPerc(0.1).xDimensionPercentage(0.3).yAspectRatio(1.f/8.f);
+
+		renderer.renderRectangle(healthBox, healthBar);
+
+		glm::vec4 newRect = healthBox();
+		newRect.z *= data.health;
+
+		glm::vec4 textCoords = {0,1,1,0};
+		textCoords.z *= data.health;
+
+		renderer.renderRectangle(newRect, health, Colors_White, {}, {}, textCoords);
+
+	}
+	renderer.popCamera();
+
+#pragma endregion
 
 	renderer.flush();
 	
 
 	//ImGui::ShowDemoWindow();
 
-	ImGui::Begin("debug");
+	/*ImGui::Begin("debug");
 
 	ImGui::Text("Bullets count: %d", (int)data.bullets.size());
 	ImGui::Text("Enemies count: %d", (int)data.enemies.size());
 
 	if (ImGui::Button("Spawn enemy"))
 	{
-
-		glm::uvec2 shipTypes[] = {{0,0}, {0,1}, {2,0}, {3, 1}};
-
-		Enemy e;
-		e.position = data.playerPos;
-
-		e.speed = 800 + rand() % 1000;
-		e.turnSpeed = 2.2f + (rand() & 1000) / 500.f;
-		e.type = shipTypes[rand() % 4];
-		e.fireRange = 1.5 + (rand() % 1000) / 2000.f;
-		e.fireTimeReset = 0.1 + (rand() % 1000) / 500;
-
-		data.enemies.push_back(e);
+		spanwEnemy();
 	}
 
-	if (ImGui::Button("Reset game")) restartGame();
+	if (ImGui::Button("Reset game"))
+	{
+		restartGame();
+	}
 
-	ImGui::End();
+	ImGui::SliderFloat("Player Health", &data.health, 0, 1);
+
+	ImGui::End();*/
 
 
 	return true;

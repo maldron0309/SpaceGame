@@ -13,7 +13,7 @@
 #include <fstream>
 #include <chrono>
 
-#define REMOVE_IMGUI 0
+#define REMOVE_IMGUI 1
 
 #if REMOVE_IMGUI == 0
 	#include "imgui.h"
@@ -368,7 +368,7 @@ int main()
 #pragma endregion
 
 #pragma region audio
-	//InitAudioDevice();
+	InitAudioDevice();
 
 	//Music m = LoadMusicStream(RESOURCES_PATH "target.ogg");
 	//Music m = {};
